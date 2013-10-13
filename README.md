@@ -3,7 +3,6 @@ check_requests
 Script to count the number of requests per minute.
 
 Usage: check_requests.pl [OPTIONS]
-Check Number of requests from access log file apache
 Mandatory arguments:
 
 	--file : file name to check
