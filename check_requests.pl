@@ -6,6 +6,7 @@ use strict;
 use Getopt::Long;
 use Time::Piece;
 use Time::Seconds;
+use Data::Dumper;
 
 my $log;
 my $time;
@@ -24,20 +25,26 @@ GetOptions($params,
 checkArguments();
 
 for(my $i=0;$i<$minutes;$i++){
-	my $request = '';
-	open my $FH,"<",$log or die "Cannot open log file";
-	while(<$FH>){
-		if ( $_ =~ m/$time/ ) {
-			$request .= $_;
-		}
-	}
-	close $FH;
-	my $count = scalar split /\n/,$request;
-	push(@requests, $request) if $request ne '';
-	print $time." number of requests: ".$count."\n";
-	my $t = Time::Piece->strptime($time, "%d/%b/%Y:%H:%M");
-	$t+=ONE_MINUTE;
-	$time= $t->strftime("%d/%b/%Y:%H:%M");
+        my $request = '';
+        open my $FH,"<",$log or die "Cannot open log file";
+        while(<$FH>){
+                if ( $_ =~ m/$time/ ) {
+                        $request .= $_;
+                        my $ip_addr = $1 if $request =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/;
+                        my $date = $1 if $request =~ /(\[[\d]{2}\/.*\/[\d]{4}:[\d]{2}:[\d]{2}:[\d]{2}\ \+[\d]{4}\])/;
+                        my $url = $1 if $request =~ /\"(.+?)\"/;
+                        my $http_status = $1 if $request =~ /\"\s(\d{3})/;
+                        my %request_log = ( ip => $ip_addr, status_code => $http_status, url => $url, date => $date);
+                        push @requests , \%request_log;
+                }
+        }
+        close $FH;
+        my $count = scalar split /\n/,$request;
+
+        print $time." number of requests: ".$count."\n";
+        my $t = Time::Piece->strptime($time, "%d/%b/%Y:%H:%M");
+        $t+=ONE_MINUTE;
+        $time= $t->strftime("%d/%b/%Y:%H:%M");
 }
 
 my %ips = &getIpRequests;
@@ -60,7 +67,7 @@ sub checkArguments{
         if(defined($params->{help})){
                 usage();
         } elsif(!defined($log) ||  !defined($time) || !defined($minutes)){
-		usage("Not initialized all the mandatory arguments");
+                usage("Not initialized all the mandatory arguments");
         }
 }
 
@@ -71,94 +78,90 @@ sub usage{
         Usage: check_requests.pl [OPTIONS]
         Check Number of requests from access log file apache
         Mandatory arguments:
-                --log		: Path to the access log file
-                --time  	: time start requests in access log format [DD/Mmm/YYYY:hh:mm ex: 22/Sep/2013:06:34]
-		--minutes 	: number of minutes after the time
-                --help     	: print this menu help
+                --log           : Path to the access log file
+                --time          : time start requests in access log format [DD/Mmm/YYYY:hh:mm ex: 22/Sep/2013:06:34]
+                --minutes       : number of minutes after the time
+                --help          : print this menu help
 EOF
         exit 0;
 }
 
 # Get the TOP 5 of pages requested for the top 10 of IP's
 sub getTopIpPages{
-	my $ref = shift;
-	my %ips = %$ref;
-	my %ips_pages=();
-	foreach my $line (@requests){
-		my @fields = split(' ',$line);
-		my $ip = $fields[0];
-		if(defined($ips{$ip})){
-			my $url = $fields[6];
-			if(defined($ips_pages{$ip}{$url})){
-				$ips_pages{$ip}{$url} +=1;	
-			} else{
-				$ips_pages{$ip}{$url} = 1;
-			}
-		}
-	}
-	return %ips_pages;
+        my $ref = shift;
+        my %ips = %$ref;
+        my %ips_pages=();
+        foreach my $request (@requests){
+                my $ip = $request->{ip};
+                if(defined($ips{$ip})){
+                        my $url = $request->{url};
+                        if(defined($ips_pages{$ip}{$url})){
+                                $ips_pages{$ip}{$url} +=1;
+                        } else{
+                                $ips_pages{$ip}{$url} = 1;
+                        }
+                }
+        }
+        return %ips_pages;
 }
 
 # Count the number of failed and success responses
 sub getRequestResponses{
-	my %response_request = (
-		success => 0,
-		failed => 0
-	);
-	foreach my $line (@requests){
-		my @fields = split(' ',$line);
-		my $response = $fields[8];
-		if($response =~ /2(.*)/){
-			$response_request{success} += 1;
-		} elsif($response =~ /4(.*)/){
-			$response_request{failed} +=1;
-		}
-	}
-	return %response_request;
+        my %response_request = (
+                success => 0,
+                failed => 0
+        );
+        foreach my $request (@requests){
+                my $response = $request->{status_code};
+                if($response =~ /2(.*)/){
+                        $response_request{success} += 1;
+                } elsif($response =~ /4(.*)/){
+                        $response_request{failed} +=1;
+                }
+        }
+        return %response_request;
 }
 
 # Count the number of requests made for each URL
 sub getPageRequests {
-	my %page_requests;
-	foreach my $line (@requests){
-		my @fields = split(' ',$line);
-		my $url = $fields[6];
-		if(! defined($page_requests{$url})){
-			$page_requests{$url} = 1;
-		} else{
-			$page_requests{$url} +=1;
-		}
-	}
-	return %page_requests;
+        my %page_requests;
+        foreach my $request (@requests){
+                my $url = $request->{url};
+                if(! defined($page_requests{$url})){
+                        $page_requests{$url} = 1;
+                } else{
+                        $page_requests{$url} +=1;
+                }
+        }
+        return %page_requests;
 }
 
 # Count the number of requests made for an IP
 sub getIpRequests {
-	my %ip_requests;
-	foreach my $line (@requests) {
-		my @fields = split(' ',$line);
-		my $ip = $fields[0];
-		if(!defined($ip_requests{$ip})){
-			$ip_requests{$ip} = 1;	
-		} else{
-			$ip_requests{$ip}+=1;
-		}
-	}
-	return %ip_requests;
+        my %ip_requests;
+        foreach my $request (@requests) {
+                my $ip = $request->{ip};
+                if(!defined($ip_requests{$ip})){
+                        $ip_requests{$ip} = 1;
+                } else{
+                        $ip_requests{$ip}+=1;
+                }
+        }
+        return %ip_requests;
 }
 
 # Get the top 10 for a given hash
 sub getTop{
-	my $ref = shift;
-	my %hash = %$ref;
-	my %sorted_hash=();
-	my $count = 0;
-	foreach my $key (sort({$hash{$b} <=> $hash{$a}} keys %hash)) {
-		$sorted_hash{$key} = $hash{$key};
-		$count +=1;
-		last if $count > 9;
-	}
-	return \%sorted_hash;
+        my $ref = shift;
+        my %hash = %$ref;
+        my %sorted_hash=();
+        my $count = 0;
+        foreach my $key (sort({$hash{$b} <=> $hash{$a}} keys %hash)) {
+                $sorted_hash{$key} = $hash{$key};
+                $count +=1;
+                last if $count > 9;
+        }
+        return \%sorted_hash;
 }
 
 # Show top 10 of pages requested per IP and make a descending order by the number of requests
@@ -179,20 +182,20 @@ sub showTopIpPages{
 
 # Show top 10 for a given hash and make a descending order by the value
 sub showTop{
-	my $ref = shift;
-	my $sort_ref = &getTop($ref);
-	my %sorted_requests = %$sort_ref;
-	foreach my $key (sort {$sorted_requests{$b} <=> $sorted_requests{$a}}keys %sorted_requests ) {
-		print "$key : $sorted_requests{$key}\n";
-	}
+        my $ref = shift;
+        my $sort_ref = &getTop($ref);
+        my %sorted_requests = %$sort_ref;
+        foreach my $key (sort {$sorted_requests{$b} <=> $sorted_requests{$a}}keys %sorted_requests ) {
+                print "$key : $sorted_requests{$key}\n";
+        }
 }
 
 # Show the percentages of failed and success requests
 sub showRequests{
-	my $ref = shift;
-	my $total = $ref->{success} + $ref->{failed};
-	my $success = ($ref->{success} * 100)/$total if $total>0;
-	my $failed = ($ref->{failed} * 100)/$total if $total>0;
-	print "Success: $success %\n" if defined $success;
-	print "Fails: $failed %\n" if defined $failed;
+        my $ref = shift;
+        my $total = $ref->{success} + $ref->{failed};
+        my $success = ($ref->{success} * 100)/$total if $total>0;
+        my $failed = ($ref->{failed} * 100)/$total if $total>0;
+        print "Success: $success %\n" if defined $success;
+        print "Fails: $failed %\n" if defined $failed;
 }
