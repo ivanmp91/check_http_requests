@@ -11,8 +11,9 @@ use Data::Dumper;
 my $log;
 my $time;
 my $minutes;
-my @requests;
+my @requests = ();
 my $params={};
+my $header_count=40;
 
 GetOptions($params,
    "log=s" =>\$log,
@@ -24,22 +25,23 @@ GetOptions($params,
 
 checkArguments();
 
+print "#" x $header_count . " REQUESTS PER MINUTE "."#" x $header_count ."\n";
 for(my $i=0;$i<$minutes;$i++){
         my $request = '';
+        my $count = 0;
         open my $FH,"<",$log or die "Cannot open log file";
         while(<$FH>){
-                if ( $_ =~ m/$time/ ) {
-                        $request .= $_;
+                $request = $_;
+                if ( $request =~ m/$time/ ) {
                         my $ip_addr = $1 if $request =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/;
                         my $date = $1 if $request =~ /(\[[\d]{2}\/.*\/[\d]{4}:[\d]{2}:[\d]{2}:[\d]{2}\ \+[\d]{4}\])/;
                         my $url = $1 if $request =~ /\"(.+?)\"/;
                         my $http_status = $1 if $request =~ /\"\s(\d{3})/;
-                        my %request_log = ( ip => $ip_addr, status_code => $http_status, url => $url, date => $date);
-                        push @requests , \%request_log;
+                        push @requests, {ip => $ip_addr, status_code => $http_status, url => $url, date => $date};
+                        $count+=1;
                 }
         }
         close $FH;
-        my $count = scalar split /\n/,$request;
 
         print $time." number of requests: ".$count."\n";
         my $t = Time::Piece->strptime($time, "%d/%b/%Y:%H:%M");
@@ -53,13 +55,17 @@ my %pages = &getPageRequests;
 my %responses = &getRequestResponses;
 my %pages_ip = &getTopIpPages($top_ips);
 
-print "###################### TOP 10 IP's ######################\n";
+print "\n";
+print "#" x $header_count . " TOP 10 IPs "."#" x $header_count ."\n";
 &showTop(\%ips);
-print "##################### TOP 10 PAGES ######################\n";
+print "\n";
+print "#" x $header_count . " TOP 10 PAGES "."#" x $header_count ."\n";
 &showTop(\%pages);
-print "##################### PERCENTAGE OF SUCCESS & BAD RESPONSES ######################\n";
+print "\n";
+print "#" x $header_count . " PERCENTAGE OF SUCCESS & BAD RESPONSES "."#" x $header_count ."\n";
 &showRequests(\%responses);
-print "##################### TOP 5 PAGES PER IP ######################\n";
+print "\n";
+print "#" x $header_count . " TOP 5 PAGES PER IP "."#" x $header_count ."\n";
 &showTopIpPages(\%pages_ip);
 
 # Check all mandatory arguments are initialized
@@ -115,7 +121,7 @@ sub getRequestResponses{
                 my $response = $request->{status_code};
                 if($response =~ /2(.*)/){
                         $response_request{success} += 1;
-                } elsif($response =~ /4(.*)/){
+                } elsif($response =~ /4(.*)/ || $response =~ /5(.*)/){
                         $response_request{failed} +=1;
                 }
         }
