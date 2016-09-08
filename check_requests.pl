@@ -99,13 +99,12 @@ sub getTopIpPages{
         my %ips_pages=();
         foreach my $request (@requests){
                 my $ip = $request->{ip};
-                if(defined($ips{$ip})){
-                        my $url = $request->{url};
-                        if(defined($ips_pages{$ip}{$url})){
-                                $ips_pages{$ip}{$url} +=1;
-                        } else{
-                                $ips_pages{$ip}{$url} = 1;
-                        }
+                my $url = $request->{url};
+                next unless $ip;
+                if(defined($ips_pages{$ip}{$url})){
+                        $ips_pages{$ip}{$url} +=1;
+                } else{
+                        $ips_pages{$ip}{$url} = 1;
                 }
         }
         return %ips_pages;
@@ -147,6 +146,7 @@ sub getIpRequests {
         my %ip_requests;
         foreach my $request (@requests) {
                 my $ip = $request->{ip};
+                next unless $ip;
                 if(!defined($ip_requests{$ip})){
                         $ip_requests{$ip} = 1;
                 } else{
